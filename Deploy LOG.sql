@@ -1,10 +1,10 @@
 --ALTER SESSION SET CURRENT_SCHEMA=homolog;
 
-Criação do campo AD_TOPVALRET na tgftop
+CriaÃ§Ã£o do campo AD_TOPVALRET na tgftop
 
-Criação da tabela AD_LOGNOTA
+CriaÃ§Ã£o da tabela AD_LOGNOTA
 Importar metadados da tabela
-Criar lançador
+Criar lanÃ§ador
 
 CREATE OR REPLACE PROCEDURE SANKHYA."STP_EXECUTA_COMANDO"  AS
 BEGIN
@@ -30,6 +30,7 @@ Atualizar triggers :
 * AD_TRG_TGFITE_VAL_RETORNO_V3
 * AD_STP_VAL_DIVERG
 *AD_TRG_TGFCAB_VAL_RETORNO_V2
+* AD_STP_VALIDA_DIVERGENCIA      
 
 Substituir o campo AD_TOPNAOVALRET por AD_TOPVALRET
 
