@@ -1,6 +1,5 @@
---ALTER SESSION SET CURRENT_SCHEMA=HOMOLOG;
 
-CREATE OR REPLACE TRIGGER AD_TRG_TGFITE_VAL_RETORNO_V2
+CREATE OR REPLACE TRIGGER SANKHYA.AD_TRG_TGFITE_VAL_RETORNO_V2
 BEFORE INSERT ON TGFITE
 REFERENCING NEW AS NEW OLD AS OLD
 FOR EACH ROW
@@ -24,6 +23,8 @@ V_TOTALITEM        TGFEST.ESTOQUE%TYPE;
 V_ID               INTEGER;
 V_DTENTSAI         TGFCAB.DTENTSAI%TYPE;
 V_NUMNOTA          TGFCAB.NUMNOTA%TYPE;
+V_MSG              TGFCAB.OBSERVACAO%TYPE;
+V_CODLOCALIMPXML   TGFTOP.CODLOCALIMPXML%TYPE;
 
 BEGIN
 /************************************************************************************************************
@@ -31,7 +32,7 @@ BEGIN
 https://grupoboticario.kanbanize.com/ctrl_board/301/cards/1188425/details/
 
 ---Criado por Ana Paula Colombo em 25/02/25
--- Objetivo:  N„o permitir inserir produtos sem saldo de remessa ou de lotes que n„o foram enviados
+-- Objetivo:  N√£o permitir inserir produtos sem saldo de remessa ou de lotes que n√£o foram enviados
 
 *************************************************************************************************************/
        V_TOTALITEM:= 0;
@@ -41,9 +42,9 @@ https://grupoboticario.kanbanize.com/ctrl_board/301/cards/1188425/details/
        FROM TGFCAB
        WHERE NUNOTA =:NEW.NUNOTA;
 
-       -- Busca configuraÁ„o  da top, se controla estoque de terceiro e se valida retorno
-       SELECT DISTINCT ATUALESTTERC , TIPMOV, NVL(AD_TOPVALRET, 'N')
-         INTO V_ESTQTERC, V_TIPMOV, V_AD_TOPVALRET
+       -- Busca configura√ß√£o  da top, se controla estoque de terceiro e se valida retorno
+       SELECT DISTINCT ATUALESTTERC , TIPMOV, NVL(AD_TOPVALRET, 'N'), NVL(CODLOCALIMPXML,0)
+         INTO V_ESTQTERC, V_TIPMOV, V_AD_TOPVALRET, V_CODLOCALIMPXML
          FROM TGFTOP
          WHERE TGFTOP.CODTIPOPER = V_CODTIPOPER
          AND   TGFTOP.DHALTER   = (select max(dhalter) from tgftop where codtipoper = V_CODTIPOPER) ;
@@ -51,13 +52,26 @@ https://grupoboticario.kanbanize.com/ctrl_board/301/cards/1188425/details/
 
        IF( V_ESTQTERC in ('R', 'P') AND (V_AD_TOPVALRET = 'S')  ) then
            -- Consulta o saldo do produto sem considerar lote, se tiver saldo importa a nota.
+
+              IF V_CODLOCALIMPXML > 0 THEN
+                    SELECT NVL(SUM(ESTOQUE ),0), NVL(SUM(RESERVADO),0)
+                              INTO V_ESTOQUE , V_RESERVADO
+                   FROM TGFEST EST
+                   WHERE EST.CODEMP  =  :NEW.CODEMP
+                   AND   EST.CODPARC =  V_CODPARC
+                   AND   EST.CODPROD =  :NEW.CODPROD
+                   AND   EST.CODLOCAL = V_CODLOCALIMPXML;
+             ELSE
                  SELECT NVL(SUM(ESTOQUE ),0), NVL(SUM(RESERVADO),0)
                         INTO V_ESTOQUE , V_RESERVADO
-             FROM TGFEST EST
-             WHERE EST.CODEMP  =  :NEW.CODEMP
-             AND   EST.CODPARC =  V_CODPARC
-             AND   EST.CODPROD =  :NEW.CODPROD
-             AND   EST.CODLOCAL = :NEW.CODLOCALORIG;
+                 FROM TGFEST EST
+                 WHERE EST.CODEMP  =  :NEW.CODEMP
+                 AND   EST.CODPARC =  V_CODPARC
+                 AND   EST.CODPROD =  :NEW.CODPROD
+                 AND   EST.CODLOCAL = :NEW.CODLOCALORIG;
+
+             END IF;
+
 
             -- Calcula o saldo disponivel
             IF V_ESTOQUE > v_RESERVADO THEN
@@ -66,7 +80,7 @@ https://grupoboticario.kanbanize.com/ctrl_board/301/cards/1188425/details/
                V_SALDO :=  V_ESTOQUE ;
             END IF;
 
-          -- Verifica se o produto tem rastro de lote ou n„o para consultar o estoque do item
+          -- Verifica se o produto tem rastro de lote ou n√£o para consultar o estoque do item
            -- Consulta estoque do item analisando lote
            -- E grava se tiver divergencia do saldo do lote.
            SELECT NVL(TEMRASTROLOTE, 'N') INTO V_TEMRASTROLOTE
@@ -74,23 +88,47 @@ https://grupoboticario.kanbanize.com/ctrl_board/301/cards/1188425/details/
             WHERE CODPROD = :NEW.CODPROD;
 
             IF (V_TEMRASTROLOTE = 'S')  THEN
-                 SELECT NVL(SUM(ESTOQUE ),0), NVL(SUM(RESERVADO),0)
-                        INTO V_ESTOQUE , V_RESERVADO
-                  FROM TGFEST EST
-                 WHERE EST.CODEMP  =  :NEW.CODEMP
-                 AND   EST.CODPARC =  V_CODPARC
-                 AND   EST.CODPROD =  :NEW.CODPROD
-                 AND   EST.CONTROLE = :NEW.CONTROLE
-                 AND   EST.CODLOCAL = :NEW.CODLOCALORIG;
+                IF V_CODLOCALIMPXML > 0 THEN
+                      SELECT NVL(SUM(ESTOQUE ),0), NVL(SUM(RESERVADO),0)
+                                INTO V_ESTOQUE , V_RESERVADO
+                     FROM TGFEST EST
+                     WHERE EST.CODEMP  =  :NEW.CODEMP
+                     AND   EST.CODPARC =  V_CODPARC
+                     AND   EST.CONTROLE = :NEW.CONTROLE
+                     AND   EST.CODPROD =  :NEW.CODPROD
+                     AND   EST.CODLOCAL = V_CODLOCALIMPXML;
+               ELSE
+                   SELECT NVL(SUM(ESTOQUE ),0), NVL(SUM(RESERVADO),0)
+                          INTO V_ESTOQUE , V_RESERVADO
+                   FROM TGFEST EST
+                   WHERE EST.CODEMP  =  :NEW.CODEMP
+                   AND   EST.CODPARC =  V_CODPARC
+                   AND   EST.CONTROLE = :NEW.CONTROLE
+                   AND   EST.CODPROD =  :NEW.CODPROD
+                   AND   EST.CODLOCAL = :NEW.CODLOCALORIG;
+
+               END IF;
+
 
              ELSE
-                 SELECT NVL(SUM(ESTOQUE ),0), NVL(SUM(RESERVADO),0)
-                        INTO V_ESTOQUE , V_RESERVADO
-                  FROM TGFEST EST
-                 WHERE EST.CODEMP  =  :NEW.CODEMP
-                 AND   EST.CODPARC =  V_CODPARC
-                 AND   EST.CODPROD =  :NEW.CODPROD
-                 AND   EST.CODLOCAL = :NEW.CODLOCALORIG;
+                  IF V_CODLOCALIMPXML > 0 THEN
+                        SELECT NVL(SUM(ESTOQUE ),0), NVL(SUM(RESERVADO),0)
+                                  INTO V_ESTOQUE , V_RESERVADO
+                       FROM TGFEST EST
+                       WHERE EST.CODEMP  =  :NEW.CODEMP
+                       AND   EST.CODPARC =  V_CODPARC
+                       AND   EST.CODPROD =  :NEW.CODPROD
+                       AND   EST.CODLOCAL = V_CODLOCALIMPXML;
+                 ELSE
+                     SELECT NVL(SUM(ESTOQUE ),0), NVL(SUM(RESERVADO),0)
+                            INTO V_ESTOQUE , V_RESERVADO
+                     FROM TGFEST EST
+                     WHERE EST.CODEMP  =  :NEW.CODEMP
+                     AND   EST.CODPARC =  V_CODPARC
+                     AND   EST.CODPROD =  :NEW.CODPROD
+                     AND   EST.CODLOCAL = :NEW.CODLOCALORIG;
+
+                 END IF;
 
             END IF;
             -- Calcula o saldo disponivel
@@ -102,32 +140,37 @@ https://grupoboticario.kanbanize.com/ctrl_board/301/cards/1188425/details/
 
            -- Verifica se tem estoque disponivel do lote
               IF ( V_ESTOQUELOTE < :NEW.QTDNEG ) or (V_ESTOQUELOTE = 0) THEN
+
                   :NEW.AD_DIVERG_IMP := 'S';
-                  
-                 -- INSERE NA TABELA DE LOG NOTA/PEDIDO SE TIVER DIVERGENCIA 
+
+                 -- INSERE NA TABELA DE LOG NOTA/PEDIDO SE TIVER DIVERGENCIA
                   IF INSERTING THEN
+
+                       V_MSG :=     'N√£o h√° estoque disponivel do produto :' || :NEW.CODPROD || ' , no local :' || :NEW.CODLOCALORIG ||' , empresa : ' || :NEW.CODEMP ||' e parceiro : '|| V_CODPARC  ||
+                                    ' Estoque Atual: ' ||V_SALDO|| ' . E voc√™ est√° tentando movimentar  : '|| :NEW.QTDNEG ||'  ' ;
+
                         SELECT NVL(MAX(ID),0)+ 1 INTO V_ID FROM  AD_LOGNOTA;
                         -- Atualiza tabela de LOG
                         INSERT INTO AD_LOGNOTA
                         (ID, NUNOTA, NUMNOTA,  CODPROD, SEQ, LOTEORIG, LOTEALT, CODLOCALORIG, CODLOCALALT, UNIDADEORIG, UNIDADEALT,
-                         QTDEORIG, QTDEALT, CODPARC, CODTIPOPER, DTENTSAI,  CODUSU, DHALTERACAO) VALUES
+                         QTDEORIG, QTDEALT, CODPARC, CODTIPOPER, DTENTSAI, OBSERVACAO,  CODUSU, DHALTERACAO) VALUES
                         (V_ID, :NEW.NUNOTA,V_NUMNOTA, :NEW.CODPROD, :NEW.SEQUENCIA, :NEW.CONTROLE, NULL, :NEW.CODLOCALORIG, NULL,  :NEW.CODVOL, NULL,
-                        :NEW.QTDNEG, NULL, V_CODPARC, V_CODTIPOPER, V_DTENTSAI,  STP_GET_CODUSULOGADO, SYSDATE);
-                  END IF;                  
+                        :NEW.QTDNEG, NULL, V_CODPARC, V_CODTIPOPER, V_DTENTSAI, V_MSG,   STP_GET_CODUSULOGADO, SYSDATE);
+                  END IF;
               ELSE
                   :NEW.AD_DIVERG_IMP := 'N';
               END IF ;
 
 
-     /* vamos comentar para n„o validar na altualizaÁ„o do item
+     /* vamos comentar para n√£o validar na altualiza√ß√£o do item
 
-              -- Decis„o Depto Fiscal em 01/04/25 - n„o bloquear a importaÁ„o
-               -- SÛ bloqueia se n„o tiver saldo em lote nenhum do produto.
+              -- Decis√£o Depto Fiscal em 01/04/25 - n√£o bloquear a importa√ß√£o
+               -- S√≥ bloqueia se n√£o tiver saldo em lote nenhum do produto.
             IF (V_SALDO = 0) OR (V_SALDO < :NEW.QTDNEG) THEN
                            raise_application_error(-20101,
-                           fc_formatahtml(p_mensagem => 'N„o h· estoque disponivel do produto :' || :NEW.CODPROD || ' , no local :' || :NEW.CODLOCALORIG ||' , empresa : ' || :NEW.CODEMP ||' e parceiro : '|| V_CODPARC   ,
-                                          p_motivo   => ' Estoque Atual: ' ||V_SALDO|| ' . E vocÍ est· tentando movimentar  : '|| :NEW.QTDNEG ||'  ',
-                                          p_solucao  => ' Consulte relatÛrio : Estoque por Local, Lote e Parceiro'));
+                           fc_formatahtml(p_mensagem => 'N√£o h√° estoque disponivel do produto :' || :NEW.CODPROD || ' , no local :' || :NEW.CODLOCALORIG ||' , empresa : ' || :NEW.CODEMP ||' e parceiro : '|| V_CODPARC   ,
+                                          p_motivo   => ' Estoque Atual: ' ||V_SALDO|| ' . E voc√™ est√° tentando movimentar  : '|| :NEW.QTDNEG ||'  ',
+                                          p_solucao  => ' Consulte relat√≥rio : Estoque por Local, Lote e Parceiro'));
 
 
              END IF;
